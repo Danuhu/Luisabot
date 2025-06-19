@@ -1,83 +1,51 @@
 
-from flask import Flask, request
 import os
 import telebot
 import mercadopago
-import threading
 
-app = Flask(__name__)
+# Configurações dos tokens via variáveis de ambiente
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+MERCADO_PAGO_TOKEN = os.getenv("MP_ACCESS_TOKEN")
 
-API_TOKEN_TELEGRAM = os.environ.get("TELEGRAM_TOKEN")
-print("TOKEN DO TELEGRAM:", API_TOKEN_TELEGRAM)
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN não configurado.")
+if not MERCADO_PAGO_TOKEN:
+    raise ValueError("MP_ACCESS_TOKEN não configurado.")
 
-ACCESS_TOKEN_MP = os.environ.get("MP_ACCESS_TOKEN")
-print("TOKEN MP:", ACCESS_TOKEN_MP)
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-bot = telebot.TeleBot(API_TOKEN_TELEGRAM)
-sdk = mercadopago.SDK(ACCESS_TOKEN_MP)
+sdk = mercadopago.SDK(MERCADO_PAGO_TOKEN)
 
-@app.route("/render/notify", methods=["POST"])
-def webhook_notify():
-    data = request.json
-    print("Webhook recebido:", data)
-
-    if data and data.get("type") == "payment":
-        payment_id = data["data"]["id"]
-        result = sdk.payment().get(payment_id)
-        status = result["response"]["status"]
-        external_reference = result["response"]["external_reference"]
-
-        if status == "approved":
-            bot.send_message(external_reference, "✅ Pagamento confirmado com sucesso!")
-
-    return {"status": "ok"}, 200
-
-@bot.message_handler(commands=["start"])
-def start(message):
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
     bot.reply_to(message, "Olá! Envie /pagar para receber o link de pagamento Pix.")
 
-@bot.message_handler(commands=["pagar"])
-def pagar(message):
+@bot.message_handler(commands=['pagar'])
+def gerar_link_pix(message):
     preference_data = {
-        "items": [{"title": "Pagamento via Pix", "quantity": 1, "unit_price": 1}],
-        "payer": {"email": "comprador@email.com"},
-        "notification_url": "https://bot-pix-telegram.onrender.com/render/notify",
-        "external_reference": str(message.chat.id),
-        "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}]}
+        "items": [
+            {
+                "title": "Produto Exemplo",
+                "quantity": 1,
+                "unit_price": 1.00
+            }
+        ],
+        "payment_methods": {
+            "excluded_payment_types": [{"id": "credit_card"}],
+            "installments": 1
+        },
+        "back_urls": {
+            "success": "https://www.seusite.com/sucesso",
+            "failure": "https://www.seusite.com/falha",
+            "pending": "https://www.seusite.com/pendente"
+        },
+        "auto_return": "approved"
     }
 
     preference_response = sdk.preference().create(preference_data)
-    init_point = preference_response["response"].get("init_point")
+    preference = preference_response["response"]
+    link_pagamento = preference["init_point"]
 
-    # Tenta pegar o código Pix
-    pix_code = (
-        preference_response["response"]
-        .get("point_of_interaction", {})
-        .get("transaction_data", {})
-        .get("qr_code")
-    )
+    bot.send_message(message.chat.id, f"💳 Clique para pagar via Pix: {link_pagamento}")
 
-    if pix_code:
-        mensagem = (
-            "💸 *Seu Pix foi gerado!*
-
-"
-            "*Copia e Cola:*
-"
-            f"`{pix_code}`
-
-"
-            f"Ou clique abaixo para pagar:
-{init_point}"
-        )
-        bot.send_message(message.chat.id, mensagem, parse_mode="Markdown")
-    else:
-        bot.send_message(
-            message.chat.id,
-            f"Não foi possível gerar o código Pix copia e cola. Mas você pode pagar por aqui:
-{init_point}"
-        )
-
-if __name__ == "__main__":
-    threading.Thread(target=bot.infinity_polling, daemon=True).start()
-    app.run(host="0.0.0.0", port=10000)
+bot.infinity_polling()
