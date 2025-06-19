@@ -48,32 +48,28 @@ def pagar(message):
     preference_response = sdk.preference().create(preference_data)
     init_point = preference_response["response"]["init_point"]
 
-    # Tenta pegar o código Pix "copia e cola"
     try:
         pix_code = preference_response["response"]["point_of_interaction"]["transaction_data"]["qr_code"]
     except KeyError:
         pix_code = None
 
     if pix_code:
-        bot.send_message(
-            message.chat.id,
-            f"💸 *Seu Pix foi gerado!*
+        mensagem = (
+            "💸 *Seu Pix foi gerado!*
 
 "
-            f"*Copia e Cola:*
-`{pix_code}`
+            "*Copia e Cola:*
+"
+            f"`{pix_code}`
 
 "
-            f"Ou, se preferir, clique abaixo para pagar:
-{init_point}",
-            parse_mode="Markdown"
-        )
-    else:
-        bot.send_message(
-            message.chat.id,
-            f"Link de pagamento gerado:
+            f"Ou clique abaixo para pagar:
 {init_point}"
         )
+        bot.send_message(message.chat.id, mensagem, parse_mode="Markdown")
+    else:
+        bot.send_message(message.chat.id, f"Link de pagamento gerado:
+{init_point}")
 
 if __name__ == "__main__":
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
