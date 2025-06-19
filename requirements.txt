@@ -1,4 +1,3 @@
-flask
-requests
+Flask
 pyTelegramBotAPI
-mercadopago==2.3.0
+mercadopago
