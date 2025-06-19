@@ -1,2 +1,4 @@
-pyTelegramBotAPI==4.15.4
-Flask==3.0.3
+flask
+requests
+pyTelegramBotAPI
+mercadopago==2.3.0
