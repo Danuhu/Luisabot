@@ -1,51 +1,52 @@
-
 import os
 import telebot
-import mercadopago
+import requests
+from flask import Flask, request
 
-# Configurações dos tokens via variáveis de ambiente
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-MERCADO_PAGO_TOKEN = os.getenv("MP_ACCESS_TOKEN")
+API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
+MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
+bot = telebot.TeleBot(API_TOKEN)
+app = Flask(__name__)
 
-if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN não configurado.")
-if not MERCADO_PAGO_TOKEN:
-    raise ValueError("MP_ACCESS_TOKEN não configurado.")
-
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-sdk = mercadopago.SDK(MERCADO_PAGO_TOKEN)
-
-@bot.message_handler(commands=['start'])
+# Comando /start
+@bot.message_handler(commands=["start"])
 def send_welcome(message):
     bot.reply_to(message, "Olá! Envie /pagar para receber o link de pagamento Pix.")
 
-@bot.message_handler(commands=['pagar'])
-def gerar_link_pix(message):
-    preference_data = {
-        "items": [
-            {
-                "title": "Produto Exemplo",
-                "quantity": 1,
-                "unit_price": 1.00
-            }
-        ],
-        "payment_methods": {
-            "excluded_payment_types": [{"id": "credit_card"}],
-            "installments": 1
-        },
-        "back_urls": {
-            "success": "https://www.seusite.com/sucesso",
-            "failure": "https://www.seusite.com/falha",
-            "pending": "https://www.seusite.com/pendente"
-        },
-        "auto_return": "approved"
+# Comando /pagar
+@bot.message_handler(commands=["pagar"])
+def handle_pagar(message):
+    url = "https://api.mercadopago.com/checkout/preferences"
+    headers = {
+        "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
     }
+    data = {
+        "items": [{
+            "title": "Produto Exemplo",
+            "quantity": 1,
+            "currency_id": "BRL",
+            "unit_price": 1.00
+        }],
+        "notification_url": "https://bot-pix-telegram.onrender.com/webhook"
+    }
+    response = requests.post(url, json=data, headers=headers)
+    link = response.json().get("init_point", "Erro ao gerar link.")
+    bot.send_message(message.chat.id, f"Clique para pagar via Pix: {link}")
 
-    preference_response = sdk.preference().create(preference_data)
-    preference = preference_response["response"]
-    link_pagamento = preference["init_point"]
+# Webhook para o Telegram
+@app.route("/" + API_TOKEN, methods=["POST"])
+def telegram_webhook():
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "ok", 200
 
-    bot.send_message(message.chat.id, f"💳 Clique para pagar via Pix: {link_pagamento}")
+@app.route("/")
+def index():
+    return "Bot está rodando via webhook."
 
-bot.infinity_polling()
+if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url="https://bot-pix-telegram.onrender.com/" + API_TOKEN)
+    app.run(host="0.0.0.0", port=10000)
