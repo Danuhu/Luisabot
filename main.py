@@ -3,6 +3,7 @@ from flask import Flask, request
 import os
 import telebot
 import mercadopago
+import threading
 
 app = Flask(__name__)
 
@@ -49,4 +50,7 @@ def pagar(message):
     bot.reply_to(message, f"Clique para pagar via Pix: {link}")
 
 if __name__ == "__main__":
+    # Roda o bot em uma thread separada
+    threading.Thread(target=bot.infinity_polling, daemon=True).start()
+    # Roda o Flask
     app.run(host="0.0.0.0", port=10000)
