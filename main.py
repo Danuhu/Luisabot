@@ -1,58 +1,52 @@
+
+from flask import Flask, request
 import os
 import telebot
 import mercadopago
-from flask import Flask, request
 
-# Tokens de ambiente (seguros)
+app = Flask(__name__)
+
 API_TOKEN_TELEGRAM = os.environ.get("TELEGRAM_TOKEN")
+print("TOKEN DO TELEGRAM:", API_TOKEN_TELEGRAM)
+
 ACCESS_TOKEN_MP = os.environ.get("MP_ACCESS_TOKEN")
+print("TOKEN MP:", ACCESS_TOKEN_MP)
 
 bot = telebot.TeleBot(API_TOKEN_TELEGRAM)
 sdk = mercadopago.SDK(ACCESS_TOKEN_MP)
 
-# Flask app
-app = Flask(__name__)
-chat_ids = {}
+@app.route("/render/notify", methods=["POST"])
+def webhook_notify():
+    data = request.json
+    print("Webhook recebido:", data)
 
-@bot.message_handler(commands=['start'])
-def boas_vindas(message):
-    bot.reply_to(message, "Olá! Digite /pagar para gerar um Pix.")
+    if data and data.get("type") == "payment":
+        payment_id = data["data"]["id"]
+        result = sdk.payment().get(payment_id)
+        status = result["response"]["status"]
+        external_reference = result["response"]["external_reference"]
 
-@bot.message_handler(commands=['pagar'])
+        if status == "approved":
+            bot.send_message(external_reference, "✅ Pagamento confirmado com sucesso!")
+
+    return {"status": "ok"}, 200
+
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.reply_to(message, "Olá! Envie /pagar para receber o link de pagamento Pix.")
+
+@bot.message_handler(commands=["pagar"])
 def pagar(message):
-    chat_id = message.chat.id
-    chat_ids[chat_id] = True
-
     preference_data = {
-        "items": [{
-            "title": "Pagamento via Pix",
-            "quantity": 1,
-            "unit_price": 10.00
-        }],
-        "notification_url": "https://SEU_LINK_RENDER/render/notify"
+        "items": [{"title": "Produto Exemplo", "quantity": 1, "unit_price": 1}],
+        "payer": {"email": "comprador@email.com"},
+        "notification_url": "https://bot-pix-telegram.onrender.com/render/notify",
+        "external_reference": str(message.chat.id)
     }
 
     preference_response = sdk.preference().create(preference_data)
     link = preference_response["response"]["init_point"]
-    bot.send_message(chat_id, "Seu link de pagamento Pix: {}".format(link))
+    bot.reply_to(message, f"Clique para pagar via Pix: {link}")
 
-@app.route("/render/notify", methods=["POST"])
-def notificar():
-    data = request.json
-    print("Notificação recebida:", data)
-
-    for cid in chat_ids:
-        bot.send_message(cid, "✅ Pagamento confirmado com sucesso!")
-    return "ok", 200
-
-# Rodar bot + servidor Flask
-import threading
-
-def start_bot():
-    bot.polling()
-
-def start_web():
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
-
-threading.Thread(target=start_bot).start()
-threading.Thread(target=start_web).start()
