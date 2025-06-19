@@ -34,23 +34,47 @@ def webhook_notify():
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(message, "Olá! Envie /pagar para receber o link de pagamento Pix.")
+    bot.reply_to(message, "Olá! Envie /pagar para gerar um Pix copia e cola para pagamento.")
 
 @bot.message_handler(commands=["pagar"])
 def pagar(message):
     preference_data = {
-        "items": [{"title": "Produto Exemplo", "quantity": 1, "unit_price": 1}],
+        "items": [{"title": "Pagamento via Pix", "quantity": 1, "unit_price": 1}],
         "payer": {"email": "comprador@email.com"},
         "notification_url": "https://bot-pix-telegram.onrender.com/render/notify",
         "external_reference": str(message.chat.id)
     }
 
     preference_response = sdk.preference().create(preference_data)
-    link = preference_response["response"]["init_point"]
-    bot.reply_to(message, f"Clique para pagar via Pix: {link}")
+    init_point = preference_response["response"]["init_point"]
+
+    # Tenta pegar o código Pix "copia e cola"
+    try:
+        pix_code = preference_response["response"]["point_of_interaction"]["transaction_data"]["qr_code"]
+    except KeyError:
+        pix_code = None
+
+    if pix_code:
+        bot.send_message(
+            message.chat.id,
+            f"💸 *Seu Pix foi gerado!*
+
+"
+            f"*Copia e Cola:*
+`{pix_code}`
+
+"
+            f"Ou, se preferir, clique abaixo para pagar:
+{init_point}",
+            parse_mode="Markdown"
+        )
+    else:
+        bot.send_message(
+            message.chat.id,
+            f"Link de pagamento gerado:
+{init_point}"
+        )
 
 if __name__ == "__main__":
-    # Roda o bot em uma thread separada
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
-    # Roda o Flask
     app.run(host="0.0.0.0", port=10000)
