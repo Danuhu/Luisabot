@@ -34,7 +34,7 @@ def webhook_notify():
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(message, "Olá! Envie /pagar para gerar um Pix copia e cola para pagamento.")
+    bot.reply_to(message, "Olá! Envie /pagar para receber o link de pagamento Pix.")
 
 @bot.message_handler(commands=["pagar"])
 def pagar(message):
@@ -42,16 +42,20 @@ def pagar(message):
         "items": [{"title": "Pagamento via Pix", "quantity": 1, "unit_price": 1}],
         "payer": {"email": "comprador@email.com"},
         "notification_url": "https://bot-pix-telegram.onrender.com/render/notify",
-        "external_reference": str(message.chat.id)
+        "external_reference": str(message.chat.id),
+        "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}]}
     }
 
     preference_response = sdk.preference().create(preference_data)
-    init_point = preference_response["response"]["init_point"]
+    init_point = preference_response["response"].get("init_point")
 
-    try:
-        pix_code = preference_response["response"]["point_of_interaction"]["transaction_data"]["qr_code"]
-    except KeyError:
-        pix_code = None
+    # Tenta pegar o código Pix
+    pix_code = (
+        preference_response["response"]
+        .get("point_of_interaction", {})
+        .get("transaction_data", {})
+        .get("qr_code")
+    )
 
     if pix_code:
         mensagem = (
@@ -68,8 +72,11 @@ def pagar(message):
         )
         bot.send_message(message.chat.id, mensagem, parse_mode="Markdown")
     else:
-        bot.send_message(message.chat.id, f"Link de pagamento gerado:
-{init_point}")
+        bot.send_message(
+            message.chat.id,
+            f"Não foi possível gerar o código Pix copia e cola. Mas você pode pagar por aqui:
+{init_point}"
+        )
 
 if __name__ == "__main__":
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
